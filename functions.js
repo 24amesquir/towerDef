@@ -1,45 +1,129 @@
 // Enemy behavior
+function updateWaveSpawner() {
+  if (waveComplete) {
+    return;
+  }
+
+  if (waveSpawnTimer > 0) {
+    waveSpawnTimer--;
+    return;
+  }
+
+  if (waveGroupIndex >= waveGroupEnemyTypeIndex.length) {
+    waveComplete = true;
+    return;
+  }
+
+  if (waveGroupSpawned >= waveGroupCount[waveGroupIndex]) {
+    waveGroupIndex++;
+    waveGroupSpawned = 0;
+
+    if (waveGroupIndex >= waveGroupEnemyTypeIndex.length) {
+      waveComplete = true;
+      return;
+    }
+  }
+
+  let typeIndex = waveGroupEnemyTypeIndex[waveGroupIndex];
+
+  spawnEnemy(typeIndex);
+  waveGroupSpawned++;
+
+  if (waveGroupSpawned >= waveGroupCount[waveGroupIndex]) {
+    waveSpawnTimer = waveGroupBufferAfter[waveGroupIndex];
+  } else {
+    waveSpawnTimer = waveGroupSpacing[waveGroupIndex];
+  }
+}
+
+function spawnEnemy(typeIndex) {
+  enemyX.push(pathData.waypoints[0].x);
+  enemyY.push(pathData.waypoints[0].y);
+  enemyPathIndex.push(0);
+  enemyHealth.push(enemyTypeHealth[typeIndex]);
+  enemyMaxHealth.push(enemyTypeHealth[typeIndex]);
+  enemySpeed.push(enemyTypeSpeed[typeIndex]);
+  enemyDamage.push(enemyTypeDamage[typeIndex]);
+  enemyReward.push(enemyTypeReward[typeIndex]);
+  enemyTypeIndex.push(typeIndex);
+}
+
+function getQueuedEnemyCount() {
+  if (waveComplete) {
+    return 0;
+  }
+
+  let queuedCount = 0;
+
+  for (let i = waveGroupIndex; i < waveGroupCount.length; i++) {
+    if (i === waveGroupIndex) {
+      queuedCount += waveGroupCount[i] - waveGroupSpawned;
+    } else {
+      queuedCount += waveGroupCount[i];
+    }
+  }
+
+  return queuedCount;
+}
+
 function moveEnemies() {
-  const speed = 1.5;
+  for (let i = enemyX.length - 1; i >= 0; i--) {
+    let target = pathData.waypoints[enemyPathIndex[i] + 1];
+    let speed = enemySpeed[i];
 
-  for (let enemy of enemyPositions) {
-    let target = pathData.waypoints[enemy.pathIndex + 1];
+    if (!target) {
+      playerLives = Math.max(0, playerLives - enemyDamage[i]);
+      removeEnemy(i);
+      continue;
+    }
 
-    if (!target) continue; // reached end
-
-    let dx = target.x - enemy.x;
-    let dy = target.y - enemy.y;
+    let dx = target.x - enemyX[i];
+    let dy = target.y - enemyY[i];
     let dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < speed) {
-      enemy.x = target.x;
-      enemy.y = target.y;
-      enemy.pathIndex++;
+      enemyX[i] = target.x;
+      enemyY[i] = target.y;
+      enemyPathIndex[i]++;
     } else {
-      enemy.x += (dx / dist) * speed;
-      enemy.y += (dy / dist) * speed;
+      enemyX[i] += (dx / dist) * speed;
+      enemyY[i] += (dy / dist) * speed;
     }
   }
 }
 
-function getHealthSegments(enemy) {
-  const maxHealth = enemy.maxHealth; // adjust to your enemy base HP
-  const percent = enemy.health / maxHealth;
+function getHealthSegments(enemyIndex) {
+  const percent = enemyHealth[enemyIndex] / enemyMaxHealth[enemyIndex];
 
-  return Math.ceil(percent * 5);
+  return Math.max(0, Math.min(5, Math.ceil(percent * 5)));
 }
 
 function removeDead() {
-  for (let i = enemyPositions.length - 1; i >= 0; i--) {
-    if (enemyPositions[i].health <= 0) {
-      enemyPositions.splice(i, 1);
+  for (let i = enemyHealth.length - 1; i >= 0; i--) {
+    if (enemyHealth[i] <= 0) {
+      playerMoney += enemyReward[i];
+      playerScore += 1;
+      removeEnemy(i);
+    }
+  }
+}
 
-      // remove projectiles targeting this enemy
-      for (let p = projectileTargetIndex.length - 1; p >= 0; p--) {
-        if (projectileTargetIndex[p] === i) {
-          removeProjectile(p);
-        }
-      }
+function removeEnemy(enemyIndex) {
+  enemyX.splice(enemyIndex, 1);
+  enemyY.splice(enemyIndex, 1);
+  enemyPathIndex.splice(enemyIndex, 1);
+  enemyHealth.splice(enemyIndex, 1);
+  enemyMaxHealth.splice(enemyIndex, 1);
+  enemySpeed.splice(enemyIndex, 1);
+  enemyDamage.splice(enemyIndex, 1);
+  enemyReward.splice(enemyIndex, 1);
+  enemyTypeIndex.splice(enemyIndex, 1);
+
+  for (let p = projectileTargetIndex.length - 1; p >= 0; p--) {
+    if (projectileTargetIndex[p] === enemyIndex) {
+      removeProjectile(p);
+    } else if (projectileTargetIndex[p] > enemyIndex) {
+      projectileTargetIndex[p]--;
     }
   }
 }
@@ -48,35 +132,30 @@ function damageDealt() {
 }
 
 function win() {
-  if(enemyPositions[0].pathIndex+1 == pathData.waypoints.length){
-    playerLives-=enemyPositions.damage;
-  }
 }
 
 // Tower behavior
 function towersAttack() {
-  for (let i = 0; i < towerPositions.length; i++) {
-    let tx = towerPositions[i].x;
-    let ty = towerPositions[i].y;
-
-    let range = towerRange[i];
-    let damage = towerDamage[i];
+  for (let i = 0; i < towerX.length; i++) {
+    let typeIndex = towerTypeIndex[i];
+    let range = towerRangeByType[typeIndex];
+    let damage = towerDamageByType[typeIndex];
 
     if (towerCooldown[i] > 0) {
       towerCooldown[i]--;
       continue;
     }
 
-    let targetIndex = getNearestEnemyIndex(tx, ty, range);
+    let targetIndex = getNearestEnemyIndex(towerX[i], towerY[i], range);
 
     if (targetIndex !== -1) {
-      projectileX.push(tx + towerWidth / 2);
-      projectileY.push(ty + towerHeight / 2);
+      projectileX.push(towerX[i] + towerWidth / 2);
+      projectileY.push(towerY[i] + towerHeight / 2);
       projectileTargetIndex.push(targetIndex);
       projectileDamage.push(damage);
       projectileSpeed.push(4);
 
-      towerCooldown[i] = 20;
+      towerCooldown[i] = towerCooldownMaxByType[typeIndex];
     }
   }
 }
@@ -85,12 +164,9 @@ function getNearestEnemyIndex(x, y, range) {
   let bestIndex = -1;
   let bestDist = Infinity;
 
-  for (let i = 0; i < enemyPositions.length; i++) {
-    let ex = enemyPositions[i].x;
-    let ey = enemyPositions[i].y;
-
-    let dx = ex - x;
-    let dy = ey - y;
+  for (let i = 0; i < enemyX.length; i++) {
+    let dx = enemyX[i] - x;
+    let dy = enemyY[i] - y;
     let dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < range && dist < bestDist) {
@@ -103,11 +179,12 @@ function getNearestEnemyIndex(x, y, range) {
 }
 
 function addTower(x, y) {
-  playerMoney -= 100;
+  let typeIndex = towerSelectedTypeIndex;
 
-  towerPositions.push({ x, y });
-  towerDamage.push(10);
-  towerRange.push(100);
+  playerMoney -= towerPrice[typeIndex];
+  towerX.push(x);
+  towerY.push(y);
+  towerTypeIndex.push(typeIndex);
   towerCooldown.push(0);
 }
 
@@ -115,19 +192,18 @@ function addTower(x, y) {
 function moveProjectiles() {
   for (let i = projectileX.length - 1; i >= 0; i--) {
     let targetIndex = projectileTargetIndex[i];
-    let target = enemyPositions[targetIndex];
 
-    if (!target) {
+    if (targetIndex < 0 || targetIndex >= enemyX.length) {
       removeProjectile(i);
       continue;
     }
 
-    let dx = target.x - projectileX[i];
-    let dy = target.y - projectileY[i];
+    let dx = enemyX[targetIndex] - projectileX[i];
+    let dy = enemyY[targetIndex] - projectileY[i];
     let dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < projectileSpeed[i]) {
-      target.health -= projectileDamage[i];
+      enemyHealth[targetIndex] -= projectileDamage[i];
       removeProjectile(i);
     } else {
       projectileX[i] += (dx / dist) * projectileSpeed[i];
@@ -145,35 +221,64 @@ function removeProjectile(i) {
 }
 
 // Drawing helpers
-function drawEnemy(ctx, enemy) {
-  if (soldierSprite.complete) {
+function drawEnemy(ctx, enemyIndex) {
+  let spriteSize = enemyTypeSpriteSize[enemyTypeIndex[enemyIndex]];
+
+  if (enemySoldierSprite.complete) {
     ctx.drawImage(
-      soldierSprite,
-      enemy.x - soldierSpriteSize / 2,
-      enemy.y - soldierSpriteSize / 2,
-      soldierSpriteSize,
-      soldierSpriteSize
+      enemySoldierSprite,
+      enemyX[enemyIndex] - spriteSize / 2,
+      enemyY[enemyIndex] - spriteSize / 2,
+      spriteSize,
+      spriteSize
     );
   } else {
     ctx.fillStyle = "blue";
     ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+    ctx.arc(enemyX[enemyIndex], enemyY[enemyIndex], 10, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-function drawTower(ctx, tower) {
-  if (vickerSprite.complete) {
+function drawTower(ctx, towerIndex) {
+  let typeIndex = towerTypeIndex[towerIndex];
+  let sprite = towerSprites[typeIndex];
+  let size = towerSpriteSize[typeIndex];
+
+  if (sprite.complete) {
     ctx.drawImage(
-      vickerSprite,
-      tower.x,
-      tower.y,
-      vickerSpriteSize,
-      vickerSpriteSize
+      sprite,
+      towerX[towerIndex],
+      towerY[towerIndex],
+      size,
+      size
     );
   } else {
     ctx.fillStyle = "red";
-    ctx.fillRect(tower.x, tower.y, towerWidth, towerHeight);
+    ctx.fillRect(towerX[towerIndex], towerY[towerIndex], towerWidth, towerHeight);
+  }
+}
+
+function drawHealthBar(ctx, enemyIndex) {
+  let segments = getHealthSegments(enemyIndex);
+  let barWidth = 20;
+  let barHeight = 4;
+  let startX = enemyX[enemyIndex] - barWidth / 2;
+  let startY = enemyY[enemyIndex] - 18;
+
+  for (let j = 0; j < 5; j++) {
+    if (j < segments) {
+      ctx.fillStyle = "limegreen";
+    } else {
+      ctx.fillStyle = "darkred";
+    }
+
+    ctx.fillRect(
+      startX + (j * (barWidth / 5)),
+      startY,
+      barWidth / 5 - 1,
+      barHeight
+    );
   }
 }
 
@@ -229,26 +334,17 @@ function drawPath(ctx, pathData) {
 const isBetween = (num, min, max) => num >= min && num <= max;
 
 function checkValid(x, y) {
-  if (playerMoney < 100) {
+  if (!isBetween(x, 0, canvas.width) || !isBetween(y, 0, canvas.height)) {
     return false;
   }
 
-  if (!isBetween(x, 0, canvas.width) || !isBetween(y, 0, canvas.height)) {
+  if (towerSelectedTypeIndex === -1) {
+    return false;
+  }
+
+  if (playerMoney < towerPrice[towerSelectedTypeIndex]) {
     return false;
   }
 
   return true;
 }
-
-
-const muteBtn = document.getElementById("muteBtn");
-
-muteBtn.addEventListener("click", () => {
-  muteBtn.classList.toggle("muted");
-
-  if (muteBtn.classList.contains("muted")) {
-    muteBtn.textContent = "🔇";
-  } else {
-    muteBtn.textContent = "🔊";
-  }
-});

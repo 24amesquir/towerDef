@@ -5,6 +5,50 @@ const ctx = canvas.getContext("2d");
 canvas.width = 700;
 canvas.height = 600;
 
+// UI setup
+const ui = {
+  lives: document.getElementById("lives"),
+  money: document.getElementById("money"),
+  score: document.getElementById("score"),
+  assault: document.getElementById("assault"),
+  maxAssault: document.getElementById("maxAssault"),
+  enemyCount: document.getElementById("enemyCount"),
+  muteBtn: document.getElementById("muteBtn"),
+  towerButtons: document.querySelectorAll(".tower-button")
+};
+
+function updateUI() {
+  ui.lives.textContent = playerLives;
+  ui.money.textContent = playerMoney;
+  ui.score.textContent = playerScore;
+  ui.assault.textContent = currentAssault;
+  ui.maxAssault.textContent = maxAssault;
+  ui.enemyCount.textContent = enemyX.length + getQueuedEnemyCount();
+
+  ui.towerButtons.forEach((button) => {
+    let typeIndex = Number(button.dataset.towerTypeIndex);
+    button.classList.toggle("selected", typeIndex === towerSelectedTypeIndex);
+    button.disabled = playerMoney < towerPrice[typeIndex];
+  });
+}
+
+ui.towerButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    towerSelectedTypeIndex = Number(button.dataset.towerTypeIndex);
+    updateUI();
+  });
+});
+
+ui.muteBtn.addEventListener("click", () => {
+  ui.muteBtn.classList.toggle("muted");
+
+  if (ui.muteBtn.classList.contains("muted")) {
+    ui.muteBtn.textContent = "Muted";
+  } else {
+    ui.muteBtn.textContent = "Sound";
+  }
+});
+
 // Main loop
 function gameLoop() {
   update();
@@ -13,53 +57,29 @@ function gameLoop() {
 }
 
 function update() {
+  updateWaveSpawner();
   moveEnemies();
   towersAttack();
   moveProjectiles();
-
   removeDead();
   win();
+  updateUI();
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawPath(ctx, pathData);
 
-  for (let i = 0; i < towerPositions.length; i++) {
-    let tower = towerPositions[i];
-
-    drawTower(ctx, tower);
+  for (let i = 0; i < towerX.length; i++) {
+    drawTower(ctx, i);
   }
 
-  for (let i = 0; i < enemyPositions.length; i++) {
-    let enemy = enemyPositions[i];
-
-    drawEnemy(ctx, enemy);
-
-    let segments = getHealthSegments(enemy);
-
-    let barWidth = 20;
-    let barHeight = 4;
-    let startX = enemy.x - barWidth / 2;
-    let startY = enemy.y - 18;
-
-    for (let j = 0; j < 5; j++) {
-      if (j < segments) {
-        ctx.fillStyle = "limegreen";
-      } else {
-        ctx.fillStyle = "darkred";
-      }
-
-      ctx.fillRect(
-        startX + (j * (barWidth / 5)),
-        startY,
-        barWidth / 5 - 1,
-        barHeight
-      );
-    }
+  for (let i = 0; i < enemyX.length; i++) {
+    drawEnemy(ctx, i);
+    drawHealthBar(ctx, i);
   }
 
-  if (previewTower) {
+  if (previewTower && towerSelectedTypeIndex !== -1) {
     ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
     ctx.fillRect(
       previewTower.x,
@@ -71,7 +91,7 @@ function draw() {
 
   for (let i = 0; i < projectileX.length; i++) {
     let colors = ["yellow", "blue", "green", "cyan"];
-    ctx.fillStyle = colors[Math.floor(Math.random() * 4) + 1];
+    ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
     ctx.beginPath();
     ctx.arc(projectileX[i], projectileY[i], 4, 0, Math.PI * 2);
     ctx.fill();
@@ -87,6 +107,7 @@ canvas.addEventListener("click", (e) => {
 
   if (checkValid(x, y)) {
     addTower((x - towerWidth / 2), (y - towerHeight / 2));
+    updateUI();
   }
 });
 
@@ -102,4 +123,5 @@ canvas.addEventListener("mousemove", (e) => {
   };
 });
 
+updateUI();
 gameLoop();
