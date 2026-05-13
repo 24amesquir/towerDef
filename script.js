@@ -80,13 +80,9 @@ function draw() {
   }
 
   if (previewTower && towerSelectedTypeIndex !== -1) {
-    ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
-    ctx.fillRect(
-      previewTower.x,
-      previewTower.y,
-      towerWidth,
-      towerHeight
-    );
+    ctx.globalAlpha = 0.5;
+    drawTowerSprite(ctx, towerSelectedTypeIndex, previewTower.x, previewTower.y);
+    ctx.globalAlpha = 1;
   }
 
   for (let i = 0; i < projectileX.length; i++) {
@@ -106,7 +102,9 @@ canvas.addEventListener("click", (e) => {
   const y = Math.floor(e.clientY - rect.top);
 
   if (checkValid(x, y)) {
-    addTower((x - towerWidth / 2), (y - towerHeight / 2));
+    let towerSize = getTowerSize(towerSelectedTypeIndex);
+
+    addTower((x - towerSize / 2), (y - towerSize / 2));
     updateUI();
   }
 });
@@ -116,10 +114,11 @@ canvas.addEventListener("mousemove", (e) => {
 
   const x = Math.floor(e.clientX - rect.left);
   const y = Math.floor(e.clientY - rect.top);
+  const previewSize = getTowerSize(towerSelectedTypeIndex);
 
   previewTower = {
-    x: x - towerWidth / 2,
-    y: y - towerHeight / 2
+    x: x - previewSize / 2,
+    y: y - previewSize / 2
   };
 });
 

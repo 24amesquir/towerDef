@@ -9,30 +9,55 @@ function updateWaveSpawner() {
     return;
   }
 
-  if (waveGroupIndex >= waveGroupEnemyTypeIndex.length) {
+  if (waveIndex >= waveEnemyTypeIndex.length) {
     waveComplete = true;
     return;
   }
 
-  if (waveGroupSpawned >= waveGroupCount[waveGroupIndex]) {
-    waveGroupIndex++;
-    waveGroupSpawned = 0;
+  advanceFinishedWaveGroups();
 
-    if (waveGroupIndex >= waveGroupEnemyTypeIndex.length) {
-      waveComplete = true;
-      return;
-    }
+  if (waveComplete) {
+    return;
   }
 
-  let typeIndex = waveGroupEnemyTypeIndex[waveGroupIndex];
+  if (waveIndex >= waveCount.length || waveGroupIndex >= waveCount[waveIndex].length) {
+    return;
+  }
+
+  let typeIndex = waveEnemyTypeIndex[waveIndex][waveGroupIndex];
 
   spawnEnemy(typeIndex);
   waveGroupSpawned++;
 
-  if (waveGroupSpawned >= waveGroupCount[waveGroupIndex]) {
-    waveSpawnTimer = waveGroupBufferAfter[waveGroupIndex];
+  if (waveGroupSpawned >= waveCount[waveIndex][waveGroupIndex]) {
+    waveSpawnTimer = waveBufferAfter[waveIndex][waveGroupIndex];
   } else {
-    waveSpawnTimer = waveGroupSpacing[waveGroupIndex];
+    waveSpawnTimer = waveSpacing[waveIndex][waveGroupIndex];
+  }
+}
+
+function advanceFinishedWaveGroups() {
+  while (waveIndex < waveCount.length && waveGroupIndex >= waveCount[waveIndex].length) {
+    if (enemyX.length > 0) {
+      return;
+    }
+
+    waveIndex++;
+    waveGroupIndex = 0;
+    waveGroupSpawned = 0;
+    currentAssault = waveIndex + 1;
+  }
+
+  if (waveIndex >= waveCount.length) {
+    waveComplete = true;
+    currentAssault = maxAssault;
+    return;
+  }
+
+  if (waveGroupSpawned >= waveCount[waveIndex][waveGroupIndex]) {
+    waveGroupIndex++;
+    waveGroupSpawned = 0;
+    advanceFinishedWaveGroups();
   }
 }
 
@@ -55,11 +80,15 @@ function getQueuedEnemyCount() {
 
   let queuedCount = 0;
 
-  for (let i = waveGroupIndex; i < waveGroupCount.length; i++) {
-    if (i === waveGroupIndex) {
-      queuedCount += waveGroupCount[i] - waveGroupSpawned;
+  if (waveIndex >= waveCount.length) {
+    return 0;
+  }
+
+  for (let group = waveGroupIndex; group < waveCount[waveIndex].length; group++) {
+    if (group === waveGroupIndex) {
+      queuedCount += waveCount[waveIndex][group] - waveGroupSpawned;
     } else {
-      queuedCount += waveGroupCount[i];
+      queuedCount += waveCount[waveIndex][group];
     }
   }
 
@@ -138,6 +167,9 @@ function win() {
 function towersAttack() {
   for (let i = 0; i < towerX.length; i++) {
     let typeIndex = towerTypeIndex[i];
+    let towerSize = getTowerSize(typeIndex);
+    let towerCenterX = towerX[i] + towerSize / 2;
+    let towerCenterY = towerY[i] + towerSize / 2;
     let range = towerRangeByType[typeIndex];
     let damage = towerDamageByType[typeIndex];
 
@@ -146,11 +178,11 @@ function towersAttack() {
       continue;
     }
 
-    let targetIndex = getNearestEnemyIndex(towerX[i], towerY[i], range);
+    let targetIndex = getNearestEnemyIndex(towerCenterX, towerCenterY, range);
 
     if (targetIndex !== -1) {
-      projectileX.push(towerX[i] + towerWidth / 2);
-      projectileY.push(towerY[i] + towerHeight / 2);
+      projectileX.push(towerCenterX);
+      projectileY.push(towerCenterY);
       projectileTargetIndex.push(targetIndex);
       projectileDamage.push(damage);
       projectileSpeed.push(4);
@@ -242,21 +274,34 @@ function drawEnemy(ctx, enemyIndex) {
 
 function drawTower(ctx, towerIndex) {
   let typeIndex = towerTypeIndex[towerIndex];
+
+  drawTowerSprite(ctx, typeIndex, towerX[towerIndex], towerY[towerIndex]);
+}
+
+function drawTowerSprite(ctx, typeIndex, x, y) {
   let sprite = towerSprites[typeIndex];
   let size = towerSpriteSize[typeIndex];
 
   if (sprite.complete) {
     ctx.drawImage(
       sprite,
-      towerX[towerIndex],
-      towerY[towerIndex],
+      x,
+      y,
       size,
       size
     );
   } else {
     ctx.fillStyle = "red";
-    ctx.fillRect(towerX[towerIndex], towerY[towerIndex], towerWidth, towerHeight);
+    ctx.fillRect(x, y, size, size);
   }
+}
+
+function getTowerSize(typeIndex) {
+  if (typeIndex === -1) {
+    return towerWidth;
+  }
+
+  return towerSpriteSize[typeIndex];
 }
 
 function drawHealthBar(ctx, enemyIndex) {

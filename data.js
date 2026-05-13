@@ -20,11 +20,11 @@ const towerSpriteSize = [36, 50];
 
 // UI state
 let currentAssault = 1;
-let maxAssault = 7;
+let maxAssault = waves.length;
 let towerSelectedTypeIndex = -1;
 
 // Player state
-let playerMoney = 1000;
+let playerMoney = 500;
 let playerLives = 20;
 let playerScore = 0;
 
@@ -45,6 +45,7 @@ let towerHeight = towerWidth;
 let previewTower = null;
 
 // Wave state
+let waveIndex = 0;
 let waveGroupIndex = 0;
 let waveGroupSpawned = 0;
 let waveSpawnTimer = 0;
