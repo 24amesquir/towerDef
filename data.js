@@ -24,25 +24,28 @@ let maxAssault = waves.length;
 let towerSelectedTypeIndex = -1;
 
 // Player state
-let playerMoney = 500;
+let playerMoney = 650;
 let playerLives = 20;
 let playerScore = 0;
 
 // Tower type data
-const towerTypeName = ["infantry", "machineGun"];
-const towerPrice = [100, 200];
+const towerPrice = [250, 400];
 const towerRangeByType = [100, 140];
 const towerDamageByType = [10, 18];
-const towerCooldownMaxByType = [20, 14];
+const towerCooldownMaxByType = [28, 9];
+const machineGunTypeIndex = 1;
+const machineGunArcDegrees = 60;
+const machineGunBulletSpreadDegrees = 4;
 
 // Tower state
 let towerX = [];
 let towerY = [];
 let towerTypeIndex = [];
 let towerCooldown = [];
+let towerAngle = [];
 let towerWidth = 50;
-let towerHeight = towerWidth;
 let previewTower = null;
+let pendingTower = null;
 
 // Wave state
 let waveIndex = 0;
@@ -50,6 +53,7 @@ let waveGroupIndex = 0;
 let waveGroupSpawned = 0;
 let waveSpawnTimer = 0;
 let waveComplete = false;
+let assaultWaiting = true;
 
 // Active enemy state
 let enemyX = [];
@@ -65,6 +69,8 @@ let enemyTypeIndex = [];
 // Projectile state
 let projectileX = [];
 let projectileY = [];
-let projectileTargetIndex = [];
+let projectileVelocityX = [];
+let projectileVelocityY = [];
+let projectileAngle = [];
 let projectileDamage = [];
 let projectileSpeed = [];

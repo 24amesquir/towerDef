@@ -1,6 +1,6 @@
 // Enemy behavior
 function updateWaveSpawner() {
-  if (waveComplete) {
+  if (waveComplete || assaultWaiting) {
     return;
   }
 
@@ -16,11 +16,15 @@ function updateWaveSpawner() {
 
   advanceFinishedWaveGroups();
 
-  if (waveComplete) {
+  if (waveComplete || assaultWaiting) {
     return;
   }
 
   if (waveIndex >= waveCount.length || waveGroupIndex >= waveCount[waveIndex].length) {
+    return;
+  }
+
+  if (waveGroupSpawned >= waveCount[waveIndex][waveGroupIndex]) {
     return;
   }
 
@@ -37,14 +41,22 @@ function updateWaveSpawner() {
 }
 
 function advanceFinishedWaveGroups() {
-  while (waveIndex < waveCount.length && waveGroupIndex >= waveCount[waveIndex].length) {
-    if (enemyX.length > 0) {
-      return;
-    }
+  if (waveIndex >= waveCount.length) {
+    waveComplete = true;
+    currentAssault = maxAssault;
+    return;
+  }
 
+  if (waveGroupSpawned < waveCount[waveIndex][waveGroupIndex] || enemyX.length > 0) {
+    return;
+  }
+
+  waveGroupIndex++;
+  waveGroupSpawned = 0;
+
+  if (waveGroupIndex >= waveCount[waveIndex].length) {
     waveIndex++;
     waveGroupIndex = 0;
-    waveGroupSpawned = 0;
     currentAssault = waveIndex + 1;
   }
 
@@ -54,11 +66,15 @@ function advanceFinishedWaveGroups() {
     return;
   }
 
-  if (waveGroupSpawned >= waveCount[waveIndex][waveGroupIndex]) {
-    waveGroupIndex++;
-    waveGroupSpawned = 0;
-    advanceFinishedWaveGroups();
+  assaultWaiting = true;
+}
+
+function startAssault() {
+  if (waveComplete || waveIndex >= waveCount.length) {
+    return;
   }
+
+  assaultWaiting = false;
 }
 
 function spawnEnemy(typeIndex) {
@@ -148,19 +164,6 @@ function removeEnemy(enemyIndex) {
   enemyReward.splice(enemyIndex, 1);
   enemyTypeIndex.splice(enemyIndex, 1);
 
-  for (let p = projectileTargetIndex.length - 1; p >= 0; p--) {
-    if (projectileTargetIndex[p] === enemyIndex) {
-      removeProjectile(p);
-    } else if (projectileTargetIndex[p] > enemyIndex) {
-      projectileTargetIndex[p]--;
-    }
-  }
-}
-
-function damageDealt() {
-}
-
-function win() {
 }
 
 // Tower behavior
@@ -178,21 +181,36 @@ function towersAttack() {
       continue;
     }
 
-    let targetIndex = getNearestEnemyIndex(towerCenterX, towerCenterY, range);
+    let targetIndex = getNearestEnemyIndex(towerCenterX, towerCenterY, range, i);
 
     if (targetIndex !== -1) {
-      projectileX.push(towerCenterX);
-      projectileY.push(towerCenterY);
-      projectileTargetIndex.push(targetIndex);
-      projectileDamage.push(damage);
-      projectileSpeed.push(4);
+      fireProjectile(i, towerCenterX, towerCenterY, targetIndex, damage);
 
       towerCooldown[i] = towerCooldownMaxByType[typeIndex];
     }
   }
 }
 
-function getNearestEnemyIndex(x, y, range) {
+function fireProjectile(towerIndex, startX, startY, targetIndex, damage) {
+  let targetAngle = getAngleDegrees(startX, startY, enemyX[targetIndex], enemyY[targetIndex]);
+
+  if (towerTypeIndex[towerIndex] === machineGunTypeIndex) {
+    targetAngle += (Math.random() * 2 - 1) * machineGunBulletSpreadDegrees;
+  }
+
+  let speed = 5;
+  let angleRadians = targetAngle * Math.PI / 180;
+
+  projectileX.push(startX);
+  projectileY.push(startY);
+  projectileVelocityX.push(Math.cos(angleRadians) * speed);
+  projectileVelocityY.push(Math.sin(angleRadians) * speed);
+  projectileAngle.push(angleRadians);
+  projectileDamage.push(damage);
+  projectileSpeed.push(speed);
+}
+
+function getNearestEnemyIndex(x, y, range, towerIndex) {
   let bestIndex = -1;
   let bestDist = Infinity;
 
@@ -201,7 +219,7 @@ function getNearestEnemyIndex(x, y, range) {
     let dy = enemyY[i] - y;
     let dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist < range && dist < bestDist) {
+    if (dist < range && dist < bestDist && canTowerHitEnemy(towerIndex, x, y, i)) {
       bestDist = dist;
       bestIndex = i;
     }
@@ -210,7 +228,36 @@ function getNearestEnemyIndex(x, y, range) {
   return bestIndex;
 }
 
-function addTower(x, y) {
+function canTowerHitEnemy(towerIndex, towerCenterX, towerCenterY, enemyIndex) {
+  if (towerTypeIndex[towerIndex] !== machineGunTypeIndex) {
+    return true;
+  }
+
+  let enemyAngle = getAngleDegrees(
+    towerCenterX,
+    towerCenterY,
+    enemyX[enemyIndex],
+    enemyY[enemyIndex]
+  );
+
+  return getSmallestAngleDifference(towerAngle[towerIndex], enemyAngle) <= machineGunArcDegrees / 2;
+}
+
+function getAngleDegrees(startX, startY, endX, endY) {
+  return (Math.atan2(endY - startY, endX - startX) * 180 / Math.PI + 360) % 360;
+}
+
+function getSmallestAngleDifference(angleA, angleB) {
+  let difference = Math.abs(angleA - angleB) % 360;
+
+  return Math.min(difference, 360 - difference);
+}
+
+function getArcRadians(angleDegrees, offsetDegrees) {
+  return (angleDegrees + offsetDegrees) * Math.PI / 180;
+}
+
+function addTower(x, y, angle = 270) {
   let typeIndex = towerSelectedTypeIndex;
 
   playerMoney -= towerPrice[typeIndex];
@@ -218,36 +265,60 @@ function addTower(x, y) {
   towerY.push(y);
   towerTypeIndex.push(typeIndex);
   towerCooldown.push(0);
+  towerAngle.push(angle);
 }
 
 // Projectile behavior
 function moveProjectiles() {
   for (let i = projectileX.length - 1; i >= 0; i--) {
-    let targetIndex = projectileTargetIndex[i];
+    projectileX[i] += projectileVelocityX[i];
+    projectileY[i] += projectileVelocityY[i];
 
-    if (targetIndex < 0 || targetIndex >= enemyX.length) {
+    if (isProjectileOffscreen(i)) {
       removeProjectile(i);
       continue;
     }
 
-    let dx = enemyX[targetIndex] - projectileX[i];
-    let dy = enemyY[targetIndex] - projectileY[i];
-    let dist = Math.sqrt(dx * dx + dy * dy);
+    let hitIndex = getProjectileHitEnemyIndex(i);
 
-    if (dist < projectileSpeed[i]) {
-      enemyHealth[targetIndex] -= projectileDamage[i];
+    if (hitIndex !== -1) {
+      enemyHealth[hitIndex] -= projectileDamage[i];
       removeProjectile(i);
-    } else {
-      projectileX[i] += (dx / dist) * projectileSpeed[i];
-      projectileY[i] += (dy / dist) * projectileSpeed[i];
     }
   }
+}
+
+function getProjectileHitEnemyIndex(projectileIndex) {
+  for (let i = 0; i < enemyX.length; i++) {
+    let dx = enemyX[i] - projectileX[projectileIndex];
+    let dy = enemyY[i] - projectileY[projectileIndex];
+    let hitRadius = Math.max(10, enemyTypeSpriteSize[enemyTypeIndex[i]] / 2);
+
+    if (Math.sqrt(dx * dx + dy * dy) <= hitRadius) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+function isProjectileOffscreen(projectileIndex) {
+  let padding = 20;
+
+  return (
+    projectileX[projectileIndex] < -padding ||
+    projectileX[projectileIndex] > canvas.width + padding ||
+    projectileY[projectileIndex] < -padding ||
+    projectileY[projectileIndex] > canvas.height + padding
+  );
 }
 
 function removeProjectile(i) {
   projectileX.splice(i, 1);
   projectileY.splice(i, 1);
-  projectileTargetIndex.splice(i, 1);
+  projectileVelocityX.splice(i, 1);
+  projectileVelocityY.splice(i, 1);
+  projectileAngle.splice(i, 1);
   projectileDamage.splice(i, 1);
   projectileSpeed.splice(i, 1);
 }
@@ -274,8 +345,59 @@ function drawEnemy(ctx, enemyIndex) {
 
 function drawTower(ctx, towerIndex) {
   let typeIndex = towerTypeIndex[towerIndex];
+  let towerSize = getTowerSize(typeIndex);
+  let towerCenterX = towerX[towerIndex] + towerSize / 2;
+  let towerCenterY = towerY[towerIndex] + towerSize / 2;
+
+  if (typeIndex === machineGunTypeIndex) {
+    drawMachineGunArc(ctx, towerCenterX, towerCenterY, towerRangeByType[typeIndex], towerAngle[towerIndex]);
+  }
 
   drawTowerSprite(ctx, typeIndex, towerX[towerIndex], towerY[towerIndex]);
+}
+
+function drawMachineGunArc(ctx, x, y, range, angle) {
+  let startAngle = getArcRadians(angle, -machineGunArcDegrees / 2);
+  let endAngle = getArcRadians(angle, machineGunArcDegrees / 2);
+
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = "#ffd84d";
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, range, startAngle, endAngle);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = "#ffd84d";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, range, startAngle, endAngle);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawProjectile(ctx, projectileIndex) {
+  ctx.save();
+  ctx.translate(projectileX[projectileIndex], projectileY[projectileIndex]);
+  ctx.rotate(projectileAngle[projectileIndex]);
+
+  ctx.fillStyle = "#2b2418";
+  ctx.fillRect(-5, -2, 10, 4);
+
+  ctx.fillStyle = "#d6a43a";
+  ctx.fillRect(-3, -1.5, 6, 3);
+
+  ctx.fillStyle = "#3a3326";
+  ctx.beginPath();
+  ctx.moveTo(5, -2);
+  ctx.lineTo(9, 0);
+  ctx.lineTo(5, 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
 }
 
 function drawTowerSprite(ctx, typeIndex, x, y) {
@@ -378,6 +500,72 @@ function drawPath(ctx, pathData) {
 // Input helpers
 const isBetween = (num, min, max) => num >= min && num <= max;
 
+function getDistanceToSegment(x, y, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(x - start.x, y - start.y);
+  }
+
+  const projection = ((x - start.x) * dx + (y - start.y) * dy) / lengthSquared;
+  const t = Math.max(0, Math.min(1, projection));
+  const closestX = start.x + t * dx;
+  const closestY = start.y + t * dy;
+
+  return Math.hypot(x - closestX, y - closestY);
+}
+
+function isOnPath(x, y, towerSize) {
+  const padding = towerSize / 2;
+
+  for (let i = 0; i < pathData.waypoints.length - 1; i++) {
+    const distance = getDistanceToSegment(x, y, pathData.waypoints[i], pathData.waypoints[i + 1]);
+
+    if (distance <= pathData.pathWidth / 2 + padding) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function overlapsExistingTower(x, y, towerSize) {
+  const radius = towerSize / 2;
+
+  for (let i = 0; i < towerX.length; i++) {
+    const existingSize = getTowerSize(towerTypeIndex[i]);
+    const existingCenterX = towerX[i] + existingSize / 2;
+    const existingCenterY = towerY[i] + existingSize / 2;
+    const dx = x - existingCenterX;
+    const dy = y - existingCenterY;
+
+    if (Math.hypot(dx, dy) < radius + existingSize / 2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isPlacingMachineGunAngle() {
+  return pendingTower && pendingTower.typeIndex === machineGunTypeIndex;
+}
+
+function getPendingTowerAngle() {
+  if (!isPlacingMachineGunAngle() || !previewTower) {
+    return 270;
+  }
+
+  return getAngleDegrees(
+    pendingTower.centerX,
+    pendingTower.centerY,
+    previewTower.centerX,
+    previewTower.centerY
+  );
+}
+
 function checkValid(x, y) {
   if (!isBetween(x, 0, canvas.width) || !isBetween(y, 0, canvas.height)) {
     return false;
@@ -391,5 +579,7 @@ function checkValid(x, y) {
     return false;
   }
 
-  return true;
+  const towerSize = getTowerSize(towerSelectedTypeIndex);
+
+  return !isOnPath(x, y, towerSize) && !overlapsExistingTower(x, y, towerSize);
 }
